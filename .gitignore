@@ -48,7 +48,9 @@ data/
 .ipynb_checkpoints
 *.ipynb
 
-# Research outputs
-results/
-plots/
-figures/
+# Research outputs (keep directory structure but ignore contents)
+plots/*.png
+plots/*.jpg
+plots/*.pdf
+risk_metrics/*.txt
+risk_metrics/*.csv
