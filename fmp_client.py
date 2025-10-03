@@ -59,7 +59,8 @@ class FMPClient:
         self,
         symbol: str,
         from_date: Optional[str] = None,
-        to_date: Optional[str] = None
+        to_date: Optional[str] = None,
+        adjusted: bool = True
     ) -> List[Dict[str, Any]]:
         """
         Get historical daily OHLC prices for a stock.
@@ -68,16 +69,17 @@ class FMPClient:
             symbol: Stock ticker symbol (e.g., 'AAPL')
             from_date: Start date in YYYY-MM-DD format (optional)
             to_date: End date in YYYY-MM-DD format (optional)
+            adjusted: Use dividend-adjusted prices (default True for total return analysis)
 
         Returns:
             List of dictionaries containing OHLC data with keys:
             - date: Trading date
-            - open: Opening price
-            - high: Highest price
-            - low: Lowest price
-            - close: Closing price
+            - open: Opening price (adjusted if adjusted=True)
+            - high: Highest price (adjusted if adjusted=True)
+            - low: Lowest price (adjusted if adjusted=True)
+            - close: Closing price (adjusted if adjusted=True)
             - volume: Trading volume
-            - adjClose: Adjusted close price
+            - adjClose: Adjusted close price (if available)
             - unadjustedVolume: Unadjusted volume
             - change: Price change
             - changePercent: Percentage change
@@ -92,7 +94,9 @@ class FMPClient:
         if to_date:
             params['to'] = to_date
 
-        data = self._make_request('historical-price-eod/full', params)
+        # Use dividend-adjusted endpoint for total return analysis
+        endpoint = 'historical-price-eod/dividend-adjusted' if adjusted else 'historical-price-eod/full'
+        data = self._make_request(endpoint, params)
 
         # The API returns data in 'historical' key
         if isinstance(data, dict) and 'historical' in data:

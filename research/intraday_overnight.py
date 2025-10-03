@@ -19,10 +19,10 @@ from typing import Dict, Tuple, List
 
 def calculate_returns(df: pd.DataFrame) -> pd.DataFrame:
     """
-    Calculate intraday and overnight returns.
+    Calculate intraday and overnight returns using dividend-adjusted prices.
 
     Args:
-        df: DataFrame with OHLC data
+        df: DataFrame with OHLC data (adjusted prices)
 
     Returns:
         DataFrame with added return columns
@@ -30,11 +30,16 @@ def calculate_returns(df: pd.DataFrame) -> pd.DataFrame:
     # Sort by date ascending
     df = df.sort_values('date').copy()
 
+    # Use adjusted prices if available (for total return including dividends)
+    # Otherwise fall back to regular prices
+    open_col = 'adjOpen' if 'adjOpen' in df.columns else 'open'
+    close_col = 'adjClose' if 'adjClose' in df.columns else 'close'
+
     # Intraday return: (Close - Open) / Open
-    df['intraday_return'] = (df['close'] - df['open']) / df['open']
+    df['intraday_return'] = (df[close_col] - df[open_col]) / df[open_col]
 
     # Overnight return: (Open - Previous Close) / Previous Close
-    df['overnight_return'] = (df['open'] - df['close'].shift(1)) / df['close'].shift(1)
+    df['overnight_return'] = (df[open_col] - df[close_col].shift(1)) / df[close_col].shift(1)
 
     return df
 
@@ -299,12 +304,13 @@ def main():
     # Initialize client
     client = FMPClient()
 
-    # Fetch maximum historical data
-    print(f"\nFetching historical data for {symbol}...")
+    # Fetch maximum historical data (dividend-adjusted for total return)
+    print(f"\nFetching dividend-adjusted historical data for {symbol}...")
     max_days = max(lookback_periods.values())
     from_date = (datetime.now() - timedelta(days=max_days + 30)).strftime('%Y-%m-%d')
 
-    data = client.get_historical_prices(symbol=symbol, from_date=from_date)
+    # Use adjusted=True to get dividend-adjusted prices for accurate total return analysis
+    data = client.get_historical_prices(symbol=symbol, from_date=from_date, adjusted=True)
 
     if not data:
         print(f"No data received for {symbol}")
