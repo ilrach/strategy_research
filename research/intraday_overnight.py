@@ -283,8 +283,31 @@ def save_risk_metrics(results: List[Dict], symbol: str, timestamp: str):
 
 
 def main():
-    # Get symbol from command line argument or use default
-    symbol = sys.argv[1] if len(sys.argv) > 1 else "BTAL"
+    # Parse command line arguments
+    # Format: python intraday_overnight.py SPY
+    #     or: python intraday_overnight.py "0.8*SPY+1.0*BTAL"
+    if len(sys.argv) > 1:
+        input_arg = sys.argv[1]
+
+        # Check if it's a weighted portfolio (contains * or +)
+        if '*' in input_arg or '+' in input_arg:
+            # Parse weighted portfolio
+            # Example: "0.8*SPY+1.0*BTAL"
+            portfolio = {}
+            parts = input_arg.replace(' ', '').split('+')
+            for part in parts:
+                weight, ticker = part.split('*')
+                portfolio[ticker.upper()] = float(weight)
+            symbol = '_'.join([f"{w:.1f}x{t}" for t, w in portfolio.items()])
+            is_portfolio = True
+        else:
+            symbol = input_arg.upper()
+            portfolio = {symbol: 1.0}
+            is_portfolio = False
+    else:
+        symbol = "BTAL"
+        portfolio = {symbol: 1.0}
+        is_portfolio = False
 
     # Generate timestamp for output files
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
@@ -298,27 +321,51 @@ def main():
         '10 Years': 365 * 10
     }
 
-    print(f"Analyzing intraday vs overnight returns for {symbol}")
+    if is_portfolio:
+        print(f"Analyzing intraday vs overnight returns for weighted portfolio:")
+        print(f"  {' + '.join([f'{w}x {t}' for t, w in portfolio.items()])}")
+    else:
+        print(f"Analyzing intraday vs overnight returns for {symbol}")
     print("=" * 80)
 
     # Initialize client
     client = FMPClient()
 
-    # Fetch maximum historical data (dividend-adjusted for total return)
-    print(f"\nFetching dividend-adjusted historical data for {symbol}...")
+    # Fetch data for all tickers in portfolio
     max_days = max(lookback_periods.values())
     from_date = (datetime.now() - timedelta(days=max_days + 30)).strftime('%Y-%m-%d')
 
-    # Use adjusted=True to get dividend-adjusted prices for accurate total return analysis
-    data = client.get_historical_prices(symbol=symbol, from_date=from_date, adjusted=True)
+    all_data = {}
+    for ticker in portfolio.keys():
+        print(f"\nFetching dividend-adjusted historical data for {ticker}...")
+        data = client.get_historical_prices(symbol=ticker, from_date=from_date, adjusted=True)
 
-    if not data:
-        print(f"No data received for {symbol}")
-        return
+        if not data:
+            print(f"No data received for {ticker}")
+            return
 
-    # Convert to DataFrame
-    df = pd.DataFrame(data)
-    df = calculate_returns(df)
+        df = pd.DataFrame(data)
+        df = calculate_returns(df)
+        all_data[ticker] = df
+
+    # Merge and calculate weighted returns
+    if is_portfolio:
+        # Start with first ticker
+        first_ticker = list(portfolio.keys())[0]
+        df = all_data[first_ticker][['date']].copy()
+        df['intraday_return'] = 0.0
+        df['overnight_return'] = 0.0
+
+        # Add weighted returns from each ticker
+        for ticker, weight in portfolio.items():
+            ticker_df = all_data[ticker][['date', 'intraday_return', 'overnight_return']]
+            df = df.merge(ticker_df, on='date', suffixes=('', f'_{ticker}'))
+            df['intraday_return'] = df['intraday_return'] + weight * df[f'intraday_return_{ticker}']
+            df['overnight_return'] = df['overnight_return'] + weight * df[f'overnight_return_{ticker}']
+            # Clean up temporary columns
+            df = df.drop(columns=[f'intraday_return_{ticker}', f'overnight_return_{ticker}'])
+    else:
+        df = all_data[symbol]
 
     print(f"Received {len(df)} days of data")
     print(f"Date range: {df['date'].min()} to {df['date'].max()}\n")
